@@ -95,8 +95,9 @@ export class Redis {
     if (!this.mp[key]) {
       return false;
     }
+    const expireAtStr = this.mp[key].expire_at?.toString();
     delete this.mp[key];
-    this.remove_from_expire_keys(key);
+    this.remove_from_expire_keys(key, expireAtStr);
     return true;
   }
   //  returns all the keys matching all the patterns
@@ -156,7 +157,7 @@ export class Redis {
     value?: SET_INPUT,
   ) {
     const currentDate = new Date();
-    const toAdd = timeout_type !== 'EX' ? expiry * 60 * 1000 : expiry;
+    const toAdd = timeout_type !== 'EX' ? expiry * 1000 : expiry;
     const futureDate = new Date(currentDate.getTime() + toAdd);
 
     if (value) {
@@ -177,11 +178,11 @@ export class Redis {
     }
   }
 
-  protected remove_from_expire_keys(key: string) {
-    const expire_at = this.mp[key]?.expire_at?.toString();
+  protected remove_from_expire_keys(key: string, expire_at?: string) {
+    const time = expire_at ?? this.mp[key]?.expire_at?.toString();
 
-    if (expire_at && this.expiry_keys[expire_at]) {
-      this.expiry_keys[expire_at].filter((k) => k != key);
+    if (time && this.expiry_keys[time]) {
+      this.expiry_keys[time] = this.expiry_keys[time].filter((k) => k != key);
     }
   }
 }
@@ -220,4 +221,4 @@ const regex = new RegExp('my*', 'i');
 redis.set('name', 'yagya', 'PX', 5_000);
 const ttl = redis.ttl('name');
 
-console.log('tt;l -->', ttl);
+console.log('ttl; -->', ttl);

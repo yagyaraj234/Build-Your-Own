@@ -96,11 +96,12 @@ describe('set', () => {
   test('EX expires in seconds', async () => {
     const redis = createClient();
 
-    redis.set('name', 'yagya', 'PX', 1000);
+    redis.set('name', 'yagya', 'EX', 1);
+
+    await wait(200);
     expect(redis.get('name')).toBe('yagya');
 
-    await wait(1500);
-
+    await wait(1_300);
     expect(redis.get('name')).toBeNull();
   });
 });
@@ -244,21 +245,22 @@ describe('expire', () => {
   test('expires an existing key in seconds', async () => {
     const redis = createClient();
 
-    redis.set('name', 'yagya', 'PX', 120_000);
+    redis.set('name', 'yagya');
     expect(redis.expire('name', 1)).toBe(true);
+
+    await wait(200);
     expect(redis.get('name')).toBe('yagya');
 
-    await wait(65000);
-
+    await wait(1_300);
     expect(redis.get('name')).toBeNull();
   });
 });
 
 describe('ttl', () => {
-  test('returns null for a missing key', () => {
+  test('returns -2 for a missing key', () => {
     const redis = createClient();
 
-    expect(redis.ttl('missing')).toBeNull();
+    expect(redis.ttl('missing')).toBe(-2);
   });
 
   test('returns the remaining time in seconds', () => {
@@ -271,22 +273,22 @@ describe('ttl', () => {
     expect(ttl).toBeLessThanOrEqual(5);
   });
 
-  test('returns null once the key has expired', async () => {
+  test('returns -2 once the key has expired', async () => {
     const redis = createClient();
 
     redis.set('name', 'yagya', 'PX', 30);
     await wait(80);
 
-    expect(redis.ttl('name')).toBeNull();
+    expect(redis.ttl('name')).toBe(-2);
   });
 
-  test('returns null after persist removes the expiry', () => {
+  test('returns -1 after persist removes the expiry', () => {
     const redis = createClient();
 
     redis.set('name', 'yagya', 'PX', 60_000);
     redis.persist('name');
 
-    expect(redis.ttl('name')).toBeNull();
+    expect(redis.ttl('name')).toBe(-1);
     expect(redis.get('name')).toBe('yagya');
   });
 });
@@ -326,7 +328,7 @@ describe('expiry cleanup', () => {
     redis.set('name', 'yagya', 'PX', 50);
     await wait(1_200);
 
-    expect(redis.exists('name')).toBe(false);
+    expect(redis.keys(/^name$/)).toEqual([]);
   });
 
   test('a replaced expiry does not expire at the old deadline', async () => {
