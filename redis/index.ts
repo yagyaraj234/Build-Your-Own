@@ -30,10 +30,30 @@ export class Redis {
 
   cron() {
     setInterval(() => {
-      const curr = new Date().toString();
+      const now = Date.now();
 
-      if (this.expiry_keys[curr]) {
-        console.log('deleteing in cron ---> ', this.expiry_keys[curr].join(', '));
+      for (const time of Object.keys(this.expiry_keys)) {
+        const bucket = this.expiry_keys[time];
+        if (!bucket) continue;
+
+        const remaining: string[] = [];
+        for (const key of bucket) {
+          const entry = this.mp[key];
+          if (!entry?.expire_at || entry.expire_at.toString() !== time) {
+            continue;
+          }
+          if (entry.expire_at.getTime() <= now) {
+            delete this.mp[key];
+          } else {
+            remaining.push(key);
+          }
+        }
+
+        if (remaining.length > 0) {
+          this.expiry_keys[time] = remaining;
+        } else {
+          delete this.expiry_keys[time];
+        }
       }
     }, 1000);
   }
@@ -66,6 +86,8 @@ export class Redis {
     if (!key) {
       throw new Error('Please pass key');
     }
+
+    this.remove_from_expire_keys(key);
 
     this.mp[key] = {
       value,
@@ -140,7 +162,7 @@ export class Redis {
   persist(key: string): Boolean {
     const exist = this.mp[key];
     if (exist && exist.expire_at) {
-      this.expiry_keys[exist.expire_at.toString()].filter((it: string) => it !== key);
+      this.remove_from_expire_keys(key);
       this.mp[key].expire_at = undefined;
       return true;
     }
@@ -156,15 +178,17 @@ export class Redis {
     timeout_type: 'EX' | 'PX' = 'EX',
     value?: SET_INPUT,
   ) {
+    this.remove_from_expire_keys(key);
+
     const currentDate = new Date();
-    const toAdd = timeout_type !== 'EX' ? expiry * 1000 : expiry;
+    const toAdd = timeout_type === 'PX' ? expiry : expiry * 1000;
     const futureDate = new Date(currentDate.getTime() + toAdd);
 
-    if (value) {
+    if (value !== undefined) {
       this.mp[key] = {
         value,
         created_at: new Date(),
-        expire_at: expiry ? futureDate : undefined,
+        expire_at: futureDate,
       };
     } else {
       this.mp[key].expire_at = futureDate;
@@ -182,7 +206,10 @@ export class Redis {
     const time = expire_at ?? this.mp[key]?.expire_at?.toString();
 
     if (time && this.expiry_keys[time]) {
-      this.expiry_keys[time] = this.expiry_keys[time].filter((k) => k != key);
+      this.expiry_keys[time] = this.expiry_keys[time].filter((k) => k !== key);
+      if (this.expiry_keys[time].length === 0) {
+        delete this.expiry_keys[time];
+      }
     }
   }
 }
