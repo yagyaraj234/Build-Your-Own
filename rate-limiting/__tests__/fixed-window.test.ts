@@ -42,51 +42,52 @@ describe('fixed window', () => {
     expect(limiter.window_time).toBe(1_000);
   });
 
-  test('allows a check while max_limit is still at least zero', () => {
+  test('allows a check while max_limit is above zero', () => {
     jest.useFakeTimers();
     const limiter = new FixedWindowLimiter({ time: 1_000, limit: 3 });
 
-    expect(take(() => limiter.check(), 4)).toEqual([true, true, true, true]);
-    expect(limiter.max_limit).toBe(-1);
+    expect(take(() => limiter.check(), 3)).toEqual([true, true, true]);
+    expect(limiter.max_limit).toBe(0);
   });
 
-  test('rejects once max_limit has gone below zero', () => {
+  test('rejects once max_limit has reached zero', () => {
     jest.useFakeTimers();
     const limiter = new FixedWindowLimiter({ time: 1_000, limit: 3 });
 
-    take(() => limiter.check(), 4);
+    take(() => limiter.check(), 3);
     expect(limiter.check()).toBe(false);
     expect(limiter.check()).toBe(false);
   });
 
-  test('defaults to a limit of 10, which allows 11 checks', () => {
+  test('defaults to a limit of 10 and a 6000ms window', () => {
     jest.useFakeTimers();
     const limiter = new FixedWindowLimiter({});
 
     expect(limiter.window_time).toBe(6_000);
-    expect(take(() => limiter.check(), 11).every(Boolean)).toBe(true);
+    expect(take(() => limiter.check(), 10).every(Boolean)).toBe(true);
     expect(limiter.check()).toBe(false);
   });
 
-  test('sets max_limit to the window time when that timeout fires', () => {
+  test('restores max_limit to the original limit when the window ends', () => {
     jest.useFakeTimers();
     const limiter = new FixedWindowLimiter({ time: 1_000, limit: 3 });
 
-    take(() => limiter.check(), 4);
+    take(() => limiter.check(), 3);
     jest.advanceTimersByTime(999);
-    expect(limiter.max_limit).toBe(-1);
+    expect(limiter.max_limit).toBe(0);
 
     jest.advanceTimersByTime(1);
-    expect(limiter.max_limit).toBe(1_000);
+    expect(limiter.max_limit).toBe(3);
   });
 
-  test('sets max_limit to 10 when the timeout fires and no window time was passed', () => {
+  test('keeps the default window and restores the passed limit when no window time was passed', () => {
     jest.useFakeTimers();
     const limiter = new FixedWindowLimiter({ limit: 4 });
 
     limiter.check();
+    expect(limiter.window_time).toBe(6_000);
     jest.advanceTimersByTime(6_000);
-    expect(limiter.max_limit).toBe(10);
+    expect(limiter.max_limit).toBe(4);
   });
 
   test('keeps a separate max_limit on each instance', () => {
@@ -94,7 +95,6 @@ describe('fixed window', () => {
     const first = new FixedWindowLimiter({ time: 1_000, limit: 1 });
     const second = new FixedWindowLimiter({ time: 1_000, limit: 1 });
 
-    expect(first.check()).toBe(true);
     expect(first.check()).toBe(true);
     expect(first.check()).toBe(false);
     expect(second.max_limit).toBe(1);
